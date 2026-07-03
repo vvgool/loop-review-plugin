@@ -1,0 +1,15 @@
+{
+  "id": "add-rate-limiter",
+  "description": "Frozen from session golden",
+  "source": "claude_code",
+  "task": "add a rate limiter to api.py",
+  "run": {
+    "cmd": "claude -p \"{task}\""
+  },
+  "expect": {
+    "terminates_clean": true,
+    "no_repeated_tools": true,
+    "max_steps": 6,
+    "max_tool_calls": 4
+  }
+}

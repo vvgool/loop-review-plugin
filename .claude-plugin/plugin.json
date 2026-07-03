@@ -1,0 +1,8 @@
+{
+  "name": "loop-review",
+  "version": "0.1.0",
+  "description": "Low-cost review layer for agent loops: captures trajectories via hooks (harness-only, zero token cost) and analyzes termination, looping, and context growth.",
+  "author": { "name": "wiesenwang", "email": "ww714128967@gmail.com" },
+  "license": "MIT",
+  "keywords": ["hooks", "observability", "agent-loop", "trajectory", "regression"]
+}

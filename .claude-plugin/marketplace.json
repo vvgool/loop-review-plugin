@@ -1,0 +1,11 @@
+{
+  "name": "loop-review-marketplace",
+  "owner": { "name": "wiesenwang", "email": "ww714128967@gmail.com" },
+  "plugins": [
+    {
+      "name": "loop-review",
+      "source": "./",
+      "description": "Low-cost review layer for agent loops: captures trajectories via hooks (harness-only, zero token cost) and analyzes termination, looping, and context growth."
+    }
+  ]
+}

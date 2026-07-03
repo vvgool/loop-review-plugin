@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>loop-review</title>
+<style>
+  :root{
+    --ink:#0d1117;--panel:#141b24;--panel2:#1b2530;--line:#26313d;
+    --text:#d7e0ea;--dim:#7c8b9c;--faint:#4d5b6b;
+    --llm:#5ec8e0;--tool:#e0a95e;--prompt:#9d8ff0;--ok:#5ecf8f;--bad:#e0685e;
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--text);font-family:var(--sans);
+       font-size:13px;line-height:1.5}
+  header{display:flex;align-items:center;gap:16px;padding:14px 24px;
+         border-bottom:1px solid var(--line);background:var(--panel)}
+  header h1{margin:0;font-size:13px;letter-spacing:.16em;text-transform:uppercase;font-weight:600}
+  header .src{font-family:var(--mono);color:var(--faint);font-size:11px}
+  label.file{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--llm);
+             cursor:pointer;border:1px solid color-mix(in srgb,var(--llm) 40%,transparent);
+             padding:6px 12px;border-radius:6px}
+  label.file input{display:none}
+  main{padding:0 24px 48px;max-width:900px}
+  .empty{color:var(--faint);font-family:var(--mono);padding:48px 0}
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:20px 0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+  .card h3{margin:0 0 10px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+           color:var(--dim)}
+  .stat{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;padding:2px 0}
+  .verdict{font-family:var(--mono);font-weight:600}
+  .verdict.ok{color:var(--ok)} .verdict.bad{color:var(--bad)}
+  .repeat{font-family:var(--mono);font-size:11px;color:var(--bad)}
+  h2.sec{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);
+          margin:20px 0 8px}
+  .diff{font-family:var(--mono);font-size:11px;margin-bottom:4px}
+  .diff .add{color:var(--ok)} .diff .rm{color:var(--bad)}
+  details.step{border:1px solid var(--line);border-radius:8px;margin-bottom:8px;background:var(--panel)}
+  summary{list-style:none;cursor:pointer;padding:11px 14px;display:flex;align-items:center;gap:12px}
+  summary::-webkit-details-marker{display:none}
+  .idx{font-family:var(--mono);color:var(--faint);font-size:11px;width:22px}
+  .kind{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:4px;text-transform:uppercase}
+  .kind.llm_request{color:var(--llm);background:color-mix(in srgb,var(--llm) 12%,transparent)}
+  .kind.tool_call{color:var(--tool);background:color-mix(in srgb,var(--tool) 12%,transparent)}
+  .kind.user_prompt{color:var(--prompt);background:color-mix(in srgb,var(--prompt) 12%,transparent)}
+  .kind.stop{color:var(--dim);background:var(--panel2)}
+  .label{flex:1;font-family:var(--mono);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nums{font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .body{border-top:1px solid var(--line);padding:12px 14px;background:var(--ink)}
+  pre{margin:6px 0 0;background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+      padding:10px;overflow-x:auto;font-family:var(--mono);font-size:11px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Loop Review</h1>
+  <span class="src" id="src"></span>
+  <label class="file">open session .jsonl
+    <input type="file" id="f" accept=".jsonl,.json,text/plain">
+  </label>
+</header>
+<main id="main"><div class="empty">open a session file from ~/.loop-review/ &nearr;</div></main>
+
+<script>
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const J=o=>JSON.stringify(o,null,2);
+
+document.getElementById('f').onchange = async e=>{
+  const file = e.target.files[0]; if(!file) return;
+  const steps = file.text ? parse(await file.text()) : [];
+  render(steps);
+};
+
+function parse(text){
+  return text.split('\n').filter(Boolean).map((l,i)=>{
+    try{const o=JSON.parse(l); if(o.step_index==null)o.step_index=i; return o;}
+    catch{return null;}
+  }).filter(Boolean);
+}
+
+function keys(ctx){
+  if(!ctx) return null;
+  return ctx.map((m,i)=> typeof m==='object'
+    ? `${i}:${m.role||'?'}:${String(m.content||'').slice(0,32)}`
+    : `${i}:${String(m).slice(0,40)}`);
+}
+
+function analyze(steps){
+  const tools=steps.filter(s=>s.kind==='tool_call');
+  const llm=steps.filter(s=>s.kind==='llm_request');
+  const stops=steps.filter(s=>s.kind==='stop');
+  const stop_reason=stops.length?stops[stops.length-1].stop_reason:null;
+  const sig={};
+  tools.forEach(s=>{const k=`${s.tool_name}::${J(s.tool_input)}`;sig[k]=(sig[k]||0)+1;});
+  const repeats=Object.entries(sig).filter(([,n])=>n>1)
+    .map(([k,n])=>({tool:k.split('::')[0],count:n})).sort((a,b)=>b.count-a.count);
+  const diffs=[]; let prev=null;
+  llm.forEach(s=>{const cur=keys(s.context);
+    if(prev&&cur) diffs.push({step_index:s.step_index,
+      added:cur.filter(x=>!prev.includes(x)),removed:prev.filter(x=>!cur.includes(x)),size:cur.length});
+    if(cur)prev=cur;});
+  const tokens=steps.reduce((a,s)=>a+(s.tokens_in||0)+(s.tokens_out||0),0);
+  const cost=steps.reduce((a,s)=>a+(s.cost||0),0);
+  return {stop_reason,clean:stop_reason==='completed',steps:steps.length,
+    tools:tools.length,llm:llm.length,repeats,diffs,tokens,cost};
+}
+
+function render(steps){
+  if(!steps.length){document.getElementById('main').innerHTML='<div class="empty">no steps in this file</div>';return;}
+  const a=analyze(steps);
+  document.getElementById('src').textContent =
+    (steps[0].tool_source||'') + ' · ' + (steps[0].trace_id||'');
+  const repeats = a.repeats.length
+    ? a.repeats.map(r=>`<div class="repeat">↺ ${esc(r.tool)} ×${r.count}</div>`).join('')
+    : '<div class="stat" style="color:var(--faint)">none</div>';
+  const diffs = a.diffs.length
+    ? a.diffs.map(d=>`<div class="diff">step ${d.step_index} · win=${d.size}
+        ${d.added.map(x=>`<span class="add">+${esc(x)}</span>`).join(' ')}
+        ${d.removed.map(x=>`<span class="rm">−${esc(x)}</span>`).join(' ')}</div>`).join('')
+    : '<div class="stat" style="color:var(--faint)">no captured context to diff</div>';
+
+  document.getElementById('main').innerHTML = `
+    <div class="cards">
+      <div class="card"><h3>Termination</h3>
+        <div class="verdict ${a.clean?'ok':'bad'}">${a.clean?'clean stop':'⚠ '+esc(a.stop_reason||'no stop')}</div>
+        <div class="stat"><span>reason</span><b>${esc(a.stop_reason||'—')}</b></div>
+        <div class="stat"><span>steps</span><b>${a.steps}</b></div></div>
+      <div class="card"><h3>Efficiency</h3>
+        <div class="stat"><span>llm</span><b>${a.llm}</b></div>
+        <div class="stat"><span>tool</span><b>${a.tools}</b></div>
+        <div class="stat"><span>tokens</span><b>${a.tokens}</b></div>
+        <div class="stat"><span>cost</span><b>$${a.cost.toFixed(3)}</b></div></div>
+      <div class="card"><h3>Repeated calls</h3>${repeats}</div>
+    </div>
+    <h2 class="sec">Context evolution</h2>${diffs}
+    <h2 class="sec">Trajectory</h2>
+    ${steps.map(renderStep).join('')}`;
+}
+
+function renderStep(s){
+  let label='',nums='';
+  if(s.kind==='user_prompt') label=(s.tool_output&&s.tool_output.prompt)||'prompt';
+  else if(s.kind==='llm_request'){label=s.model||'model';nums=`${s.tokens_in||0}→${s.tokens_out||0}tok`;}
+  else if(s.kind==='tool_call'){label=s.tool_name||'tool';nums=`${s.latency_ms||0}ms`;}
+  else if(s.kind==='stop') label=s.stop_reason||'stop';
+  const blocks=[];
+  if(s.tool_input) blocks.push(`<pre>${esc(J(s.tool_input))}</pre>`);
+  if(s.tool_output) blocks.push(`<pre>${esc(J(s.tool_output))}</pre>`);
+  if(s.context) blocks.push(`<pre>${esc(s.context.map(m=>`[${m.role}] ${String(m.content).slice(0,80)}`).join('\n'))}</pre>`);
+  return `<details class="step"><summary>
+      <span class="idx">${s.step_index}</span>
+      <span class="kind ${s.kind}">${String(s.kind).replace('_',' ')}</span>
+      <span class="label">${esc(label)}</span><span class="nums">${nums}</span>
+    </summary><div class="body">${blocks.join('')||'<span style="color:var(--faint);font-family:var(--mono);font-size:11px">no detail captured</span>'}</div></details>`;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+name: loop-regression
+
+# Guards against agent-loop regressions: if a prompt or loop change makes a
+# frozen scenario start looping, terminate badly, or blow its step/cost budget,
+# this fails the PR.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  replay-gate:
+    # Zero-cost, self-contained: asserts frozen reference trajectories.
+    # Always runs — no agent, no API keys, no spend.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Unit tests
+        run: pip install pytest && pytest -q
+      - name: Run replay gate
+        run: python regression/check.py --junit loop-regression.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: loop-regression-report, path: loop-regression.xml }
+
+  live-gate:
+    # Real regression gate: re-runs the agent on each case's task and asserts
+    # the FRESH trajectory. Manual-dispatch only until the agent-install step
+    # below is filled in — it needs the agent CLI, capture hooks registered in
+    # the runner, and an API key, none of which exist on a bare runner.
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      # - name: Install your agent + capture hooks here
+      #   run: |
+      #     # e.g. install claude / codex / opencode and register core/append.py
+      #     # so runs capture into $LOOP_REVIEW_DIR
+      - name: Run live gate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python regression/check.py --run --junit loop-regression-live.xml
