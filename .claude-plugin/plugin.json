@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "description": "Low-cost review layer for agent loops: captures trajectories via hooks (harness-only, zero token cost) and analyzes termination, looping, and context growth.",
   "author": { "name": "wiesenwang", "email": "ww714128967@gmail.com" },
+  "homepage": "https://github.com/vvgool/loop-review-plugin",
+  "repository": "https://github.com/vvgool/loop-review-plugin",
   "license": "MIT",
   "keywords": ["hooks", "observability", "agent-loop", "trajectory", "regression"]
 }
